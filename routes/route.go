@@ -1,10 +1,11 @@
-package route
+package routes
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"fmt"
 )
 
-func authRoutes (app *fiber.App) {
-	
+func SetupRoutes() {
+	fmt.printf("Hee")
 }
  
