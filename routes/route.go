@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func SetupRoutes() {
+func Greetings() {
 	fmt.printf("Hee")
 }
  

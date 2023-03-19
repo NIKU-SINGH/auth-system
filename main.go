@@ -8,20 +8,34 @@ import (
 	"github.com/joho/godotenv"
 	"log"
 	"os"
+    "fmt"
+    "time"
+    "github.com/golang-jwt/jwt/v5"
+    "golang.org/x/crypto/bcrypt"
+
 )
 
 
 // Schema 
 type User struct {
-    ID       uint   `gorm:"primary_key"`
-    Name     string `gorm:"not null"`
-    Email    string `gorm:"not null;unique"`
-    Password string `gorm:"not null"`
-	Role     bool 	`gorm:"not null"`
+    ID           uint   `gorm:"primary_key"`
+    Username     string `gorm:"not null"`
+    Email        string `gorm:"not null;unique"`
+    Password     string `gorm:"not null"`
+	Role         bool 	`gorm:"not null"`
+}
+
+// Claims for the token
+
+type MyCustomClaims struct {
+	Foo string `json:"foo"`
+	jwt.RegisteredClaims
 }
 
 
 func main() {
+    mySigningKey := []byte("AllYourBase")
+
 	// Loading the env variables
 	err := godotenv.Load()
 	if err != nil {
@@ -53,15 +67,60 @@ func main() {
 		if err != nil {
             return c.Status(400).SendString("Invalid Input")
         }
+
+        // Hashing the passowrd
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+        if err != nil {
+            return err
+        }
+
+        user.Password = string(hashedPassword)
+
 		result := db.Create(&user)
 		// check for errors
 			if result.Error != nil {
 			return c.JSON(fiber.Map{"error": result.Error})
 		}	
-		return c.JSON(fiber.Map{"data": user})
+		return c.JSON(fiber.Map{"User created": user})
 	})
 
 	// Login Routes
+    app.Post("api/auth/login",func(c *fiber.Ctx) error {
+
+        var user User
+        // Parsing the body request
+        if err := c.BodyParser(&user); err != nil {
+            return c.Status(400).SendString("Invalid Input")
+        }
+
+         // Find user in database
+        var dbUser User
+        if err:=db.Where("username = ?",user.Username).Find(&dbUser).Error; err != nil{
+            if err == gorm.ErrRecordNotFound {
+                return fiber.NewError(fiber.StatusUnauthorized, "User not found, please sign in")
+            }
+        }
+
+        // Comparing the passwords
+        if err := bcrypt.CompareHashAndPassword([]byte(dbUser.Password),[]byte(user.Password)); err != nil {
+            return fiber.NewError(fiber.StatusUnauthorized, "Invalid username or password")
+        }
+
+        // Create claims while leaving out some of the optional fields
+        claims := MyCustomClaims{
+	            "bar",
+	            jwt.RegisteredClaims{
+		// Also fixed dates can be used for the NumericDate
+		        ExpiresAt: jwt.NewNumericDate(time.Unix(1516239022, 0)),
+		        Issuer:    "test",
+	            },
+        }
+
+        token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+        ss, err := token.SignedString(mySigningKey)
+        fmt.Printf("Token is",ss)
+        return err
+    })
 
 	// Get All Users Route
 	app.Get("api/getallusers",func(c *fiber.Ctx) error{
