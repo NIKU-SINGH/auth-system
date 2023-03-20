@@ -3,34 +3,50 @@ package database
 import(
 	"fmt"
 	"log"
-	"strconv"
-	"github.com/percoguru/notes-api-fiber/config"
+	// "strconv"
+	"os"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	// "github.com/gofiber/fiber/v2"
+	// "auth-system/models"
 )
+
+// Schema 
+type User struct {
+    ID           uint   `gorm:"primary_key"`
+    Username     string `gorm:"not null"`
+    Email        string `gorm:"not null;unique"`
+    Password     string `gorm:"not null"`
+	Role         bool 	`gorm:"not null"`
+}
 
 // Variable for the Database
 var DB *gorm.DB
 
 // Function to connect with DB
-func ConnectDB() {
-	var err error
-	p := config.Config("DB_PORT")
-	port,err := strconv.ParseUint(p,10,32)
+func ConnectDB() *gorm.DB {
 
+	// userSchema := models.User{}
+
+	// Loading the env variables
+	err := godotenv.Load()
 	if err != nil {
-		log.Println("Error: port number is not a number")
+    	log.Fatal("Error loading .env file")
 	}
 
-	// Connection URL to connect to Postgres Database
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", config.Config("DB_HOST"), port, config.Config("DB_USER"), config.Config("DB_PASSWORD"), config.Config("DB_NAME"))
+	URL := os.Getenv("DB_URL")
 
-	DB, err = gorm.Open(postgres.Open(dsn))
-
-	if err != nil {
+	// Connet to databse and create a table
+	dsn := URL
+    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    if err != nil {
         panic("failed to connect database")
-    }
+    } else {fmt.Printf("database connection established")}
 
-	fmt.Println("Connection Opened to Database")
+    // Create the schema
+    db.AutoMigrate(&User{})
+
+	return db
 
 }
