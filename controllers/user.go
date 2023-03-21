@@ -5,6 +5,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"github.com/golang-jwt/jwt/v5"
 	"time"
+	"fmt"
+	// "log"
 	"auth-system/database"
 	// "gorm.io/gorm"
 	// "gorm.io/driver/postgres"
@@ -16,18 +18,54 @@ type User struct {
     Username     string `gorm:"not null;unique"`
     Email        string `gorm:"not null;unique"`
     Password     string `gorm:"not null"`
-	Role         bool 	`gorm:"not null"`
+	Role         string `gorm:"not null;default:user"`
+	CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // Claims for the token
 
-type MyCustomClaims struct {
-	Foo string `json:"foo"`
-	jwt.RegisteredClaims
+// type MyCustomClaims struct {
+// 	Foo string `json:"foo"`
+// 	jwt.RegisteredClaims
+// }
+
+type Claims struct {
+    Username string `json:"username"`
+    Role   string `json:"role"`
+    jwt.RegisteredClaims
 }
 
 // Import the DB object and initialize it
 var db  = database.ConnectDB()
+
+// Verify Admin
+func VerifyAdmin(c *fiber.Ctx) error {
+	// Gettig the JWT token
+	cookie :=c.Cookies("jwt")
+	mySigningKey := []byte("AllYourBase")
+
+
+	// Parsing the JWT token
+	token, err := jwt.Parse(cookie, func(token *jwt.Token) (interface{}, error) {
+        // check signing method
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, 
+			fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+        }
+        // return secret key for signature validation
+        return mySigningKey, nil
+    })
+	claims := token.Claims.(jwt.MapClaims)
+	if claims["role"] == "admin" {
+		fmt.Printf("Verified admin")
+		return c.Next()
+	} else {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized user, can only read the data"})
+	}
+	
+	return c.JSON(fiber.Map{"Error while parsing the token": err})
+}
 
 // CreateUserHandler
 func CreateUserHandler(c *fiber.Ctx) error {
@@ -55,7 +93,6 @@ func CreateUserHandler(c *fiber.Ctx) error {
 			// }
 			return fiber.NewError(fiber.StatusUnauthorized, "User is already registered")
 		}
-
 
 		result := db.Create(&user)
 		// check for errors
@@ -90,13 +127,14 @@ func LoginHandler(c *fiber.Ctx) error {
 	}
 
 	// Create claims while leaving out some of the optional fields
-	claims := MyCustomClaims{
-			"bar",
-			jwt.RegisteredClaims{
-	// Also fixed dates can be used for the NumericDate
-			ExpiresAt: jwt.NewNumericDate(time.Unix(1516239022, 0)),
-			Issuer:    "test",
-			},
+	claims := Claims{
+		Username: dbUser.Username,
+		Role: dbUser.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+            ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
+            Issuer:    "my-app",
+            IssuedAt:  jwt.NewNumericDate(time.Now()),
+        },
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -130,9 +168,10 @@ func GetAllUsersHandler(c *fiber.Ctx) error {
 	var users []User
 		result := db.Find(&users)
 		if result.Error != nil {
-			return c.JSON(fiber.Map{"error": result.Error})
+			return c.JSON(fiber.Map{"error in finding users": result.Error})
         }
-		return c.JSON(fiber.Map{"data":result})
+		fmt.Printf("list of users is: %v",result)
+		return c.JSON(fiber.Map{"Data of all users":result})
 }
 
 func DeleteUserHandler(c *fiber.Ctx) error {
